@@ -6,12 +6,33 @@
 
 var UI = require('ui');
 var Vibe = require('ui/vibe');
-//var Vector2 = require('vector2');
+var Settings = require('settings');
+var Clay = require('./clay');
+var clayConfig = require('./config');
+var clay = new Clay(clayConfig, null, {autoHandleEvents: false});
+var whitelist;
+
+Pebble.addEventListener('showConfiguration', function(e) {
+  Pebble.openURL(clay.generateUrl());
+});
+
+Pebble.addEventListener('webviewclosed', function(e) {
+  if (e && !e.response) {
+    return;
+  }
+  var dict = clay.getSettings(e.response);
+
+  // Save the Clay settings to the Settings module. 
+  Settings.option(dict);
+});
+
 var _pokedex = {"1":"Bulbasaur","2":"Ivysaur","3":"Venusaur","4":"Charmander","5":"Charmeleon","6":"Charizard","7":"Squirtle","8":"Wartortle","9":"Blastoise","10":"Caterpie","11":"Metapod","12":"Butterfree","13":"Weedle","14":"Kakuna","15":"Beedrill","16":"Pidgey","17":"Pidgeotto","18":"Pidgeot","19":"Rattata","20":"Raticate","21":"Spearow","22":"Fearow","23":"Ekans","24":"Arbok","25":"Pikachu","26":"Raichu","27":"Sandshrew","28":"Sandslash","29":"Nidoran\u2640","30":"Nidorina","31":"Nidoqueen","32":"Nidoran\u2642","33":"Nidorino","34":"Nidoking","35":"Clefairy","36":"Clefable","37":"Vulpix","38":"Ninetales","39":"Jigglypuff","40":"Wigglytuff","41":"Zubat","42":"Golbat","43":"Oddish","44":"Gloom","45":"Vileplume","46":"Paras","47":"Parasect","48":"Venonat","49":"Venomoth","50":"Diglett","51":"Dugtrio","52":"Meowth","53":"Persian","54":"Psyduck","55":"Golduck","56":"Mankey","57":"Primeape","58":"Growlithe","59":"Arcanine","60":"Poliwag","61":"Poliwhirl","62":"Poliwrath","63":"Abra","64":"Kadabra","65":"Alakazam","66":"Machop","67":"Machoke","68":"Machamp","69":"Bellsprout","70":"Weepinbell","71":"Victreebel","72":"Tentacool","73":"Tentacruel","74":"Geodude","75":"Graveler","76":"Golem","77":"Ponyta","78":"Rapidash","79":"Slowpoke","80":"Slowbro","81":"Magnemite","82":"Magneton","83":"Farfetch'd","84":"Doduo","85":"Dodrio","86":"Seel","87":"Dewgong","88":"Grimer","89":"Muk","90":"Shellder","91":"Cloyster","92":"Gastly","93":"Haunter","94":"Gengar","95":"Onix","96":"Drowzee","97":"Hypno","98":"Krabby","99":"Kingler","100":"Voltorb","101":"Electrode","102":"Exeggcute","103":"Exeggutor","104":"Cubone","105":"Marowak","106":"Hitmonlee","107":"Hitmonchan","108":"Lickitung","109":"Koffing","110":"Weezing","111":"Rhyhorn","112":"Rhydon","113":"Chansey","114":"Tangela","115":"Kangaskhan","116":"Horsea","117":"Seadra","118":"Goldeen","119":"Seaking","120":"Staryu","121":"Starmie","122":"Mr. Mime","123":"Scyther","124":"Jynx","125":"Electabuzz","126":"Magmar","127":"Pinsir","128":"Tauros","129":"Magikarp","130":"Gyarados","131":"Lapras","132":"Ditto","133":"Eevee","134":"Vaporeon","135":"Jolteon","136":"Flareon","137":"Porygon","138":"Omanyte","139":"Omastar","140":"Kabuto","141":"Kabutops","142":"Aerodactyl","143":"Snorlax","144":"Articuno","145":"Zapdos","146":"Moltres","147":"Dratini","148":"Dragonair","149":"Dragonite","150":"Mewtwo","151":"Mew"};
 var _location;
 var listUI;
+var loadingScreen;
 var pokelist = [];
 var card;
+var loading = true;
 
 //location stuff
 var watchId;
@@ -21,10 +42,27 @@ var options = {
   timeout: 10000
 };
 
-init();
+function Log(message)
+{
+  console.log(message);
+}
+
+function onMissingConfig()
+{
+  var ecard = new UI.Card();
+  ecard.title('No configuration');
+  ecard.body('Please run the configuration to set the Pokemon filter and restart the app');
+  ecard.show();
+}
 
 function init()
 {
+  whitelist = Settings.option("whitelist");
+  if(!whitelist)
+    {
+      onMissingConfig();
+    } else {
+  
   listUI = new UI.Menu({
     sections: [{
     title: 'Initializing...'
@@ -32,13 +70,20 @@ function init()
   });
   listUI.on('select', onMenuSelect);
   listUI.on('longSelect', onMenuLongSelect);
-  listUI.show();
+//   listUI.show();
   
   card = new UI.Card();
   card.on('show', onCardShow);
   card.on('hide', onCardHide);
   
+  loadingScreen = new UI.Card();
+  loadingScreen.title("Loading...");
+  loadingScreen.subtitle("Initializing...");
+  loadingScreen.show();
+  
+  
   getLocation();
+    }
 }
 
 function onCardShow()
@@ -91,6 +136,7 @@ function onMenuLongSelect(e)
 
 function getLocation()
 {
+  loadingScreen.subtitle("Getting location...");
   navigator.geolocation.getCurrentPosition(onLocationSuccess, onLocationError, options);
 }
 
@@ -98,6 +144,7 @@ function onLocationSuccess(pos)
 {
   _location = pos;
   watchId = navigator.geolocation.watchPosition(onNewPosition, onLocationError, options);
+  loadingScreen.subtitle('Scanning location...');
   scanLocation();
 }
 
@@ -129,7 +176,8 @@ function scanLocation()
 {
   //do scan
   var url = 'https://pokevision.com/map/scan/' + _location.coords.latitude + '/' + _location.coords.longitude;
-  listUI.section(0).title = 'Scanning...';
+  if(loading)
+    listUI.section(0).title = 'Scanning...';
   xhrRequest(url, 'GET', onScanComplete, _location, 0);
 }
 
@@ -139,13 +187,15 @@ function getMapData(location, jobId)
   if(jobId !== 0){
     url += '/' + jobId;
   }
+  if(loading)
+    loadingScreen.subtitle("Fetching Pokemon...");
   listUI.section(0).title = 'Scan complete';
   xhrRequest(url, 'GET', onDataFetchComplete, location, jobId);
 }
 
 function onScanComplete(response, location, jobId)
 {
-  console.log('Scan completed. ' + response);
+  Log('Scan completed. ' + response);
   var json = JSON.parse(response);
   if(!(json && json.status == 'success' && json.jobId))
     onGetDataError();
@@ -161,8 +211,8 @@ function onGetDataError()
 }
 
 function onDataFetchComplete(response, location, jobId)
-{
-  console.log('Done fetching data. ' + response);
+{  
+  Log('Done fetching data. ' + response);
   var json = JSON.parse(response);
   if(!(json && json.status == 'success'))
     onGetDataError();
@@ -179,24 +229,50 @@ function onDataFetchComplete(response, location, jobId)
     {
       processPokelist(json.pokemon);
       processPokemon(location, pokelist);	
+      if(loading)
+        {
+          loading = false;
+          listUI.show();
+          loadingScreen.hide();
+        }
     }
+    
     //schedule next
     setTimeout(function() { scanLocation(); }, 31000);
   }
 }
 
+String.prototype.hashCode = function() {
+  var hash = 0, i, chr, len;
+  if (this.length === 0) return hash;
+  for (i = 0, len = this.length; i < len; i++) {
+    chr   = this.charCodeAt(i);
+    hash  = ((hash << 5) - hash) + chr;
+    hash |= 0; // Convert to 32bit integer
+  }
+  return hash;
+};
+
 function processPokelist(items)
 {
   //add new
+  var vibrate = false;
   for(var i = 0; i < items.length;i++)
     {
-      if(!pokelist[items[i].id])
+      var pokemon = items[i];
+      pokemon.id = ("P" + pokemon.pokemon_id + pokemon.latitude + pokemon.longitude).hashCode();
+      if(!pokelist[items[i].id] && whitelist.indexOf(pokemon.pokemonId + "") > 1)
         {
           //insert
-          console.log('Added pokemon ' + items[i].id);
+          Log('Added pokemon ' + items[i].id);
           pokelist[items[i].id] = items[i];
+          vibrate = true;
         }
     }  
+  if(vibrate)
+    {
+      Vibe.vibrate('short');
+    }
 }
 
 function processPokemon(location, list)
@@ -213,7 +289,7 @@ function processPokemon(location, list)
      if(now > list[key].expiration_time)
         {
           //remove
-          console.log('Removed pokemon ' + pokelist[key].id);
+          Log('Removed pokemon ' + pokelist[key].id);
           delete pokelist[key];
           continue;
         }
@@ -235,7 +311,7 @@ function processPokemon(location, list)
   
   if(inrange)
     {
-        Vibe.vibrate('short');
+        Vibe.vibrate('long');
     }
   
   //update UI
@@ -254,7 +330,7 @@ function processSinglePokemon(pokemon, location)
     if((pokemon.distance < olddistance && pokemon.distance <= 50 && olddistance > 50) || (pokemon.distance <= 50 && !olddistance))
       {
         pokemon.inrange = true;
-        console.log(pokemon.name + ' in range! Distance ' + pokemon.distance + 'm, old ' + olddistance);
+        Log(pokemon.name + ' in range! Distance ' + pokemon.distance + 'm, old ' + olddistance);
       }
   else { 
     pokemon.inrange = false;
@@ -370,9 +446,18 @@ function updateListUI(list)
   var items = parsePokemonToItems(list);
   listUI.items(0, items);
   listUI.section(0).title = Object.keys(pokelist).length + " pokemon nearby";
-  
-  //console.log('Updated menu');
 }
+
+init();
+
+
+
+
+
+
+
+
+
 
 /**
  * Creates a LatLon point on the earth's surface at the specified latitude / longitude.
@@ -384,7 +469,7 @@ function updateListUI(list)
  * @example
  *     var p1 = new LatLon(52.205, 0.119);
  */
-function LatLon(lat, lon) {
+ function LatLon (lat, lon) {
     // allow instantiation without 'new'
     if (!(this instanceof LatLon)) return new LatLon(lat, lon);
 
