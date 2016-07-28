@@ -11,6 +11,7 @@ var Clay = require('./clay');
 var clayConfig = require('./config');
 var clay = new Clay(clayConfig, null, {autoHandleEvents: false});
 var whitelist;
+var Vector2 = require('vector2');
 
 Pebble.addEventListener('showConfiguration', function(e) {
   Pebble.openURL(clay.generateUrl());
@@ -31,7 +32,6 @@ var _location;
 var listUI;
 var loadingScreen;
 var pokelist = [];
-var card;
 var loading = true;
 
 //location stuff
@@ -41,6 +41,11 @@ var options = {
   maximumAge: 10000,
   timeout: 10000
 };
+
+var navWindow;
+var Polyline = require('./polyline.js');
+var navWatch;
+var rad;
 
 function Log(message)
 {
@@ -70,61 +75,22 @@ function init()
   });
   listUI.on('select', onMenuSelect);
   listUI.on('longSelect', onMenuLongSelect);
-//   listUI.show();
-  
-  card = new UI.Card();
-  card.on('show', onCardShow);
-  card.on('hide', onCardHide);
-  
+
   loadingScreen = new UI.Card();
   loadingScreen.title("Loading...");
   loadingScreen.subtitle("Initializing...");
   loadingScreen.show();
   
-  
   getLocation();
     }
 }
 
-function onCardShow()
-{
-  card.watch = navigator.geolocation.watchPosition(onCardLocationSuccess, onCardLocationError, options);
-  updateCard();
-}
-
-function updateCard()
-{
-  card.title(card.pokemon.distance + 'm (' + card.pokemon.heading + ')');
-  card.subtitle(card.pokemon.name + ' (' + card.pokemon.remaining + ')');
-}
-
-function onCardLocationSuccess(location)
-{
-  card.pokemon = processSinglePokemon(card.pokemon, location);
-  if(card.pokemon.inrange){
-    //ding!
-    Vibe.vibrate('short');
-  }
-  updateCard();
-}
-
-function onCardLocationError(err)
-{
-  //todo
-}
-
-function onCardHide()
-{
-  navigator.geolocation.clearWatch(card.watch);
-}
-
 function onMenuSelect(e)
 {
-  //start tracking
-  
+  //get directions
   var pokemon = e.item.data;
-  card.pokemon = pokemon;
-  card.show();
+  //listUI.hide();
+  openNavWindow(pokemon);
 }
 
 function onMenuLongSelect(e)
@@ -448,12 +414,147 @@ function updateListUI(list)
   listUI.section(0).title = Object.keys(pokelist).length + " pokemon nearby";
 }
 
+function openNavWindow(pokemon)
+{
+  navWindow = new UI.Window({
+    backgroundColor: 'white'
+  });
+  navWindow.on('hide', onNavWindowHide);
+  navWindow.pokemon = pokemon;
+  navWindow.on('click', 'up', function() { if(navWindow.zoom < 10){ navWindow.zoom++;Log("Zoom is now " + navWindow.zoom); zoomRedraw(); navRedraw();} });
+  navWindow.on('click', 'down', function() {if(navWindow.zoom > 1) { navWindow.zoom--;Log("Zoom is now " + navWindow.zoom); zoomRedraw(); navRedraw();} });
+  navWindow.show();
+  //start nav
+  getDirections(pokemon);
+}
+
+function onNavWindowHide()
+{
+  navigator.geolocation.clearWatch(navWatch);
+}
+
+function getDirections(pokemon)
+{
+  var url = "https://maps.googleapis.com/maps/api/directions/json?origin=" +
+      _location.coords.latitude +
+      "," +
+      _location.coords.longitude +
+      "&destination=" +
+      pokemon.latitude +
+      "," +
+      pokemon.longitude +
+      "&mode=walking";
+  //Log(url);
+  xhrRequest(url, 'GET', onGetDirectionsSuccess, 0, 0);
+}
+
+function onGetDirectionsSuccess(response, foo, bar)
+{
+  //Log(response);
+  navWindow.locationResponse = JSON.parse(response);
+  navWindow.zoom = 10;//min: 1, max: 10
+  
+  rad = new UI.Radial({
+    position: new Vector2(47, 59),
+    size: new Vector2(50, 50),
+    borderColor: 'black'
+  });
+  var poscircle = new UI.Circle({
+    position: new Vector2(72, 84),
+    radius: 2,
+    backgroundColor: 'black'
+  });
+  navWindow.add(poscircle);
+  navWindow.add(rad);
+  
+  if(navWindow.locationResponse.status == "OK")
+  {
+    //Log(navWindow.locationResponse);
+    var polylines = Polyline.decode(navWindow.locationResponse.routes[0].overview_polyline.points);
+    navWindow.polylines = [];
+    //create polyline elements
+    for(var i = 0; i < (polylines.length - 1);i++)
+    {
+      var polystart = polylines[i];
+      var polyend = polylines[i + 1];
+      var poly = {
+        lat1: polystart[0],
+        lon1: polystart[1],
+        lat2: polyend[0],
+        lon2: polyend[1]
+      };
+      var p1 = getOnScreenPosition(poly.lat1, poly.lon1);
+      var p2 = getOnScreenPosition(poly.lat2, poly.lon2);
+      poly.line= new UI.Line({
+        position: new Vector2(p1.x, p1.y),
+        position2: new Vector2(p2.x, p2.y),
+        strokeColor: 'black'
+      });
+     navWindow.add(poly.line);
+      navWindow.polylines.push(poly);
+    }
+    navWatch = navigator.geolocation.watchPosition(gpsPing, function(){}, options);
+  }
+}
+
+function zoomRedraw()
+{
+  var pos = rad.position();
+  var size = rad.size();
+  
+  var radius = 50;
+  pos.x = (72 - Math.round((radius * (navWindow.zoom / 10)) / 2));
+  pos.y = (84 - Math.round((radius * (navWindow.zoom / 10)) / 2));
+  size.x = Math.round(radius * (navWindow.zoom / 10));
+  size.y = Math.round(radius * (navWindow.zoom / 10));
+  
+  // Schedule the animation with an animateDef
+  rad.animate({ position: pos, size: size }, 0);
+}
+
+function navRedraw()
+{
+  for(var i = 0; i < navWindow.polylines.length;i++)
+  {
+    var pos1 = getOnScreenPosition(navWindow.polylines[i].lat1, navWindow.polylines[i].lon1);
+    var pos2 = getOnScreenPosition(navWindow.polylines[i].lat2, navWindow.polylines[i].lon2);
+    var vec1 = navWindow.polylines[i].line.position();
+    var vec2 = navWindow.polylines[i].line.position2();
+    vec1.x = pos1.x;
+    vec1.y = pos1.y;
+    vec2.x = pos2.x;
+    vec2.y = pos2.y;
+    navWindow.polylines[i].line.animate({
+      position: vec1,
+      position2: vec2
+    }, 0);
+  }
+}
+
+function gpsPing(loc)
+{
+  _location = loc;
+  navRedraw();
+}
+
+function getOnScreenPosition(lat, lon)
+{
+  var mylat = _location.coords.latitude;
+  var mylon = _location.coords.longitude;
+  
+  var dlat = lat - mylat;
+  var dlon = lon - mylon;
+  
+  dlat = Math.round((dlat / 0.000009) * (navWindow.zoom / 10));
+  dlon = Math.round((dlon / 0.000009) * (navWindow.zoom / 10));
+  //center = 72, 84
+  return {
+    x: (dlon + 72),
+    y: (84 - dlat)
+  };
+}
+
 init();
-
-
-
-
-
 
 
 
