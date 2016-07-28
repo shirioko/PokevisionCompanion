@@ -421,8 +421,8 @@ function openNavWindow(pokemon)
   });
   navWindow.on('hide', onNavWindowHide);
   navWindow.pokemon = pokemon;
-  navWindow.on('click', 'up', function() { if(navWindow.zoom < 10){ navWindow.zoom++;Log("Zoom is now " + navWindow.zoom); zoomRedraw(); navRedraw();} });
-  navWindow.on('click', 'down', function() {if(navWindow.zoom > 1) { navWindow.zoom--;Log("Zoom is now " + navWindow.zoom); zoomRedraw(); navRedraw();} });
+  navWindow.on('click', 'up', function() { if(navWindow.zoom < 10){ navWindow.zoom++;Log("Zoom is now " + navWindow.zoom); navRedraw();} });
+  navWindow.on('click', 'down', function() {if(navWindow.zoom > 1) { navWindow.zoom--;Log("Zoom is now " + navWindow.zoom); navRedraw();} });
   navWindow.show();
   //start nav
   getDirections(pokemon);
@@ -454,18 +454,18 @@ function onGetDirectionsSuccess(response, foo, bar)
   navWindow.locationResponse = JSON.parse(response);
   navWindow.zoom = 10;//min: 1, max: 10
   
-  rad = new UI.Radial({
-    position: new Vector2(47, 59),
-    size: new Vector2(50, 50),
-    borderColor: 'black'
-  });
+//   rad = new UI.Radial({
+//     position: new Vector2(47, 59),
+//     size: new Vector2(50, 50),
+//     borderColor: 'black'
+//   });
   var poscircle = new UI.Circle({
     position: new Vector2(72, 84),
     radius: 2,
     backgroundColor: 'black'
   });
   navWindow.add(poscircle);
-  navWindow.add(rad);
+//   navWindow.add(rad);
   
   if(navWindow.locationResponse.status == "OK")
   {
@@ -497,20 +497,20 @@ function onGetDirectionsSuccess(response, foo, bar)
   }
 }
 
-function zoomRedraw()
-{
-  var pos = rad.position();
-  var size = rad.size();
+// function zoomRedraw()
+// {
+//   var pos = rad.position();
+//   var size = rad.size();
   
-  var radius = 50;
-  pos.x = (72 - Math.round((radius * (navWindow.zoom / 10)) / 2));
-  pos.y = (84 - Math.round((radius * (navWindow.zoom / 10)) / 2));
-  size.x = Math.round(radius * (navWindow.zoom / 10));
-  size.y = Math.round(radius * (navWindow.zoom / 10));
+//   var radius = 50;
+//   pos.x = (72 - Math.round((radius * (navWindow.zoom / 10)) / 2));
+//   pos.y = (84 - Math.round((radius * (navWindow.zoom / 10)) / 2));
+//   size.x = Math.round(radius * (navWindow.zoom / 10));
+//   size.y = Math.round(radius * (navWindow.zoom / 10));
   
-  // Schedule the animation with an animateDef
-  rad.animate({ position: pos, size: size }, 0);
-}
+//   // Schedule the animation with an animateDef
+//   rad.animate({ position: pos, size: size }, 0);
+// }
 
 function navRedraw()
 {
