@@ -15,6 +15,11 @@ var buzz_added;
 var buzz_inrange;
 var Vector2 = require('vector2');
 
+var frontColor = 'black';
+var backColor = 'white';
+var statusDef = {};
+var nextScan = 1;
+
 Pebble.addEventListener('showConfiguration', function(e) {
   Pebble.openURL(clay.generateUrl());
 });
@@ -62,9 +67,11 @@ function Log(message)
 
 function onMissingConfig()
 {
-  var ecard = new UI.Card();
-  ecard.title('No configuration');
-  ecard.body('Please run the configuration to set the Pokemon filter and restart the app');
+  var ecard = new UI.Card({
+    title: 'No configuration',
+    body: 'Please run the configuration to set the Pokemon filter and restart the app',
+    status: statusDef
+  });
   ecard.show();
 }
 
@@ -78,19 +85,39 @@ function init()
       buzz_inrange = Settings.option('buzz_inrange');
       buzz_added = Settings.option('buzz_added');
       
+      var dark = Settings.option('darktheme');
+      if(dark){
+        frontColor = 'white';
+        backColor = 'black';
+      }
+      
+      statusDef = {
+        color: frontColor,
+        backgroundColor: backColor
+      };
+      
   listUI = new UI.Menu({
     sections: [{
-    title: 'Initializing...'
-  }]
+    title: 'Initializing...',
+      backgroundColor: backColor,
+      textColor: frontColor
+  }],
+    backgroundColor: backColor,
+    textColor: frontColor,
+    highlightBackgroundColor: frontColor,
+    highlightTextColor: backColor,
+    status: statusDef
   });
   listUI.on('select', onMenuSelect);
   listUI.on('longSelect', onMenuLongSelect);
   listUI.on('show', onListShow);
   listUI.on('hide', onListHide);
 
-  loadingScreen = new UI.Card();
-  loadingScreen.title("Loading...");
-  loadingScreen.subtitle("Initializing...");
+  loadingScreen = new UI.Card({
+    title: "Loading...",
+    body: "Initializing...",
+    status: statusDef
+  });
   loadingScreen.show();
   
   getLocation();
@@ -104,6 +131,11 @@ function onListShow()
   listVisible = true;
   setInterval(function() { 
     if(listVisible){
+      nextScan--;
+      if(nextScan === 0)
+        {
+          scanLocation();
+        }
       var list = processPokemon(_location, pokelist);
       updateListUI(list);
     }
@@ -142,7 +174,7 @@ function onMenuLongSelect(e)
 
 function getLocation()
 {
-  loadingScreen.subtitle("Getting location...");
+  loadingScreen.body("Getting location...");
   navigator.geolocation.getCurrentPosition(onLocationSuccess, onLocationError, options);
 }
 
@@ -164,9 +196,9 @@ function onLocationSuccess(pos)
   else
     {
       //cold start
-      loadingScreen.subtitle('Scanning location...');
+      loadingScreen.body('Scanning location...');
+      scanLocation();
     }
-  scanLocation();
 }
 
 function onNewPosition(pos)
@@ -175,9 +207,11 @@ function onNewPosition(pos)
 }
 
 function onLocationError(err){
-  var ecard = new UI.Card();
-  ecard.title('Location Error');
-  ecard.body('location error (' + err.code + '): ' + err.message);
+  var ecard = new UI.Card({
+    title: 'Location Error',
+    body: 'location error (' + err.code + '): ' + err.message,
+    status: statusDef
+  });
   ecard.show();
 }
 
@@ -227,7 +261,7 @@ function onScanComplete(response, location, jobId)
                 getMapData(_location);
               } else {
                 listUI.section(0).title = "Scan failed!";
-                setTimeout(function(){ scanLocation(); }, 30000);
+                nextScan = 32;
               }
             return;
           }
@@ -238,9 +272,11 @@ function onScanComplete(response, location, jobId)
 function onGetDataError()
 {
   
-  var ecard = new UI.Card();
-  ecard.title('Data Error');
-  ecard.body('Could not load data. Restart app.');
+  var ecard = new UI.Card({
+    title: 'Data Error',
+    body: 'Could not load data. Restart app.',
+    status: statusDef
+  });
   ecard.show();
   listUI.hide();
 }
@@ -261,7 +297,7 @@ function onDataFetchComplete(response, location, jobId)
     }
   else {
       if(loading)
-        loadingScreen.subtitle("Fetching Pokemon...");
+        loadingScreen.body("Fetching Pokemon...");
       listUI.section(0).title = 'Scan complete';
     if(json.jobStatus != 'failure' && json.jobStatus != 'unknown')
     {
@@ -278,7 +314,7 @@ function onDataFetchComplete(response, location, jobId)
     }
     
     //schedule next
-    setTimeout(function() { scanLocation(); }, 31000);
+    nextScan = 32;
   }
 }
 
@@ -388,8 +424,9 @@ function processSinglePokemon(pokemon, location)
 
 function getHeading(heading)
 {
+  //Log("Getting directions for " + heading);
   var dir;
-if (heading > 348.75 && heading <= 11.25)
+if ((heading > 348.75 && heading >= 0) || (heading <= 11.25 && heading >= 0))
 {
  dir = "N";
 }
@@ -497,12 +534,16 @@ function updateListUI(list)
 {
   var items = parsePokemonToItems(list);
   listUI.items(0, items);
+  if(nextScan > 0)
+    {
+      listUI.section(0).title = "Next scan in " + (nextScan - 1);
+    }
 }
 
 function openNavWindow(pokemon)
 {
   navWindow = new UI.Window({
-    backgroundColor: 'white'
+    backgroundColor: backColor
   });
   navWindow.on('hide', onNavWindowHide);
   navWindow.pokemon = pokemon;
@@ -538,16 +579,11 @@ function onGetDirectionsSuccess(response, foo, bar)
   //Log(response);
   navWindow.locationResponse = JSON.parse(response);
   navWindow.zoom = 10;//min: 1, max: 10
-  
-//   rad = new UI.Radial({
-//     position: new Vector2(47, 59),
-//     size: new Vector2(50, 50),
-//     borderColor: 'black'
-//   });
+
   var poscircle = new UI.Circle({
     position: new Vector2(72, 84),
     radius: 2,
-    backgroundColor: 'black'
+    backgroundColor: frontColor
   });
   navWindow.add(poscircle);
 //   navWindow.add(rad);
@@ -573,7 +609,7 @@ function onGetDirectionsSuccess(response, foo, bar)
       poly.line= new UI.Line({
         position: new Vector2(p1.x, p1.y),
         position2: new Vector2(p2.x, p2.y),
-        strokeColor: 'black'
+        strokeColor: frontColor
       });
      navWindow.add(poly.line);
       navWindow.polylines.push(poly);

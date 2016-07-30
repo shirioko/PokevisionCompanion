@@ -3,29 +3,29 @@ module.exports = [
   "items": [
     {
       "type": "heading",
-      "defaultValue": "Filter configuration"
-    },
-    {
-      "type": "text",
-      "defaultValue": "Select which Pokemon to show"
+      "defaultValue": "Configuration"
     },
     {
       "type": "toggle",
       "appKey": "buzz_inrange",
       "label": "Long vibrate when Pokemon gets in range",
-      "defaultValue": true,
-      "attributes": {
-        "required": "required"
-      }
+      "defaultValue": true
     },
     {
       "type": "toggle",
       "appKey": "buzz_added",
       "label": "Short vibrate when new Pokemon is added to the list",
-      "defaultValue": false,
-      "attributes": {
-        "required": "required"
-      }
+      "defaultValue": false
+    },
+    {
+      "type": "toggle",
+      "appKey": "darktheme",
+      "label": "Use dark theme",
+      "defaultValue": false
+    },
+    {
+      "type": "text",
+      "defaultValue": "Select which Pokemon to show"
     },
     {
       "type": "checkboxgroup",
