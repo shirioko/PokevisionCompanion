@@ -6,6 +6,12 @@ module.exports = [
       "defaultValue": "Configuration"
     },
     {
+      "type": "input",
+      "appKey": "servername",
+      "label": "PokemonGo-Map server (http://example.com)",
+      "defaultValue": ""
+    },
+    {
       "type": "toggle",
       "appKey": "buzz_inrange",
       "label": "Long vibrate when Pokemon gets in range",
